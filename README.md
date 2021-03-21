@@ -1,13 +1,14 @@
 # PBPK_Module8_Assignment
 
 
-METHOD RK4
-STARTTIME = 0
-STOPTIME = 12; 24;105
-DT = 0.0025
-DTOUT = 0.1
-
-library(desolve)
+---
+# title: "Module8_Assignment"
+# author: "Ashenafi Beyi"
+# date: "3/20/2021"
+---
+  install.packages("deSolve")
+  
+  library(deSolve)
 # Physiological parameters
 # Blood flow rates
 QCC = 12.9  # Cardiac output (L/h/kg) (Brown et al., 1997, Table 22 for mixed-breed (Mongrel) dogs (8.39 L/h/kg) and beagles (12.9 L/h/kg))
@@ -38,6 +39,7 @@ PF = 0.086 #  Fat:plasmaPC (Craigmillet al., 2000, Table 3; Craigmill, 2003, Tab
 PR = 4.75  # Richly perfused tissues:plasmaPC (Assumed the same as kidney:plasmaPC)
 PS = 0.85  # Slowly perfused tissues:plasmaPC (Assumed the same as muscle:plasmaPC)
 
+# Permeability cinstant (L/h/kg tissue) (permeation area cross products)
 PAFC = 0.012 # Fat tissue permeability (0.12 in Leavens et al., 2012)
 PAMC = 0.225 # Muscle tissue permeability (0.45 in Leavens et al., 2012)
 PASC = 0.049 # Slowly perfused tissue permeability (0.49 in Leavens et al., 2012)
@@ -60,7 +62,7 @@ Timeiv= 0.01   # IV infusion time (h), based on Leavens et al., 2012
 KurineC= 0.2     # L/h/kg
 
 # Urinary elimination rate
-Kurine - KurineC * BW # L/h
+Kurine = KurineC * BW # L/h
 
 # Parameters for various exposure scenarios
 PDOSEoral= 100  # (mg/kg)
@@ -92,21 +94,25 @@ PAS = PASC*VS   # Slowly perfused tissue:bloodpermeability (L/h)
 
 # Volume of tissue vs blood
 # Fat
-VFb= FVBF*VF  # Fat compartment blood volume
-VFt= VF-VFb   # Fat compartment tissue volume
+VFB= FVBF*VF  # Fat compartment blood volume
+VFT= VF-VFB   # Fat compartment tissue volume
 
 # Muscle
-VMb= FVBM*VM  # Muscle compartment blood volume
-VMt= VM-VMb   # Muscle compartment tissue volume
+VMB = FVBM*VM  # Muscle compartment blood volume
+VMT = VM-VMB   # Muscle compartment tissue volume
 
 # Slowly perfused tissue
-VSb= FVBS*VS  # Slowly perfused compartment blood volume
-VSt= VS-VSb   # Slowly perfused compartment tissue volume
+VSB = FVBS*VS  # Slowly perfused compartment blood volume
+VST = VS-VSB   # Slowly perfused compartment tissue volume
 
 # Dosing
-DOSEoral= PDOSEoral*BW  # (mg)
-DOSEiv= PDOSEiv*BW      # (mg)
-DOSEim= PDOSEim*BW      # (mg)
+DOSEoral = PDOSEoral*BW  # (mg)
+DOSEiv = PDOSEiv*BW      # (mg)
+DOSEim = PDOSEim*BW      # (mg)
+
+# Dosing, multiple oral gavage
+DOSEimfast = DOSEim * Frac # Dose allocated to the fast absorption phase (mg)
+DOSEimslow = DOSEim * (1 - Frac) # Dose allocated to the depot for slow absorption (mg)
 
 # Dosing, multiple oral gavage
 tlen= 0.1      # Length of oral gavage exposure (h/day)
@@ -119,136 +125,145 @@ IVR = DOSEiv/Timeiv
 
 pbpkmodel <- function(Time, State, Parameters){
   with(as.list(c(State, Parameters)), {
-   #########################################################################
-   ## Concentration of the chemical in the vein of each compartment
-   CVL = AL/(VL * PL) # Concentration in the liver venous blood
-   CVK = AK/(VK * PK) # Concentration in the kidney venous blood
-   CVR = AR/(VR * PR) # Concentration in the venous blood of richly perfused compartment
-   CVF = AFB/VFB      # Concentration in the venous blood of fat
-   CVS = ASB/VSB      # Concentration in the venous blood of slowly perfused compartment
-   CVM = AMB/VMB      # Concentration in the venous blood of muscle
-   
-   ## Concentration of the chemical in the tissue sub-compartment of each member-limited compartment
-   CMT = AMT/VMT  # Muscle
-   CFT = AFT/VFT  # Fat
-   CST = ASLT/VST # Slowly perfused tissues
-   
-   # OTC iv injection to the venous
-   RIV = IVR * (Time < Timeiv)
-   dAIV = RIV
-   
-   # OTC oral gavage to the stomach
-   RDOSEoral <- OralR * (Time <= tdose * tinterval) * (Time %% tinterval < tlen) # Oral exposure rate (mg/h)
-   dADOSEoral = RDOSEoral  # Amount that orally administered (mg)
-   RAST = RDOSEoral - kst * AST # Rate of change in the amiunt of chemical in the stomach (mg/h)
-   dAST = RAST # Amount in the stomach (mg)
-   
-   # OTC in injection to the muscle
-   RDOSSEimremain = -kdiss * DOSEimremain
-   dDOSEimremain = RDOSEimremain
-   Rim = Kim * Amtsite # im absorption rate (mg/h)
-   dAbsorb - Rim # Amount absorbed after im injection (mg)
-   Rsite - Rim + Kdiss * DOSEimremain # Rate of change in the amount of absorbable OTC in the injection site (mg/h)
-   dAmtsite - Rsite # Amount of absorbable OTC that remains in the injection site (mg)
-   
-   #####################################################################################
-   ## OTC in blood compartment
-   CV = ((QL * CVL + QK * CVK + QF * CVF + QM * CVM + QR * CVR + QS * CVS + RIV + Rim)/QC) # Concentration in the vein
-   CA = AA/Vblood # Concentration in the artery
-   RA = QC * (CA -CA) # Rate of change in the amount of chemical in the blood compartment
-   dAA = RA
-   dAUCCV = CV
-   
-   ######################################################################################
-   ## OTC in liver compartment
-   RL = QL * (CA - CVL) + RAD # Rate of change in the amount of chemical in liver
-   dAL = RL # Amount of chemical in liver
-   CL - AL/VL
-   dAUCCV = CL
-   
-   ################################################################################
-   #OTC in kidney compartment
-   # Urinary excretion of OTC
-   Rurine = Kurine * CVK
-   dAUrine = Rurine
-   
-   # Kidney
-   RK = QK * (CA - CVK) - Rurine # Rate of change in the amount of chemical in kidney
-   dAK = RK # Amount of chemical in kidney
-   CK = AK/VK # Concentration in kidney
-   dAUCCK - CK
-   
-   #################################################################################
-   ## OTC in muscle compartment, permeability-likited model
-   RMB = QM * (CA - CVM) - PAM * CVM + (PAM * CMT)/PM # Rate of change in the amount of chemical in blood sub-compartment
-   dAMB = RMB # amount of chemical in blood sub-compartment
-   RMT - PAM * CVM - (PAM * CMT)/PM # Rate of change in the amount of chemical in tissue sub-compartment
-   dAMT = RMT # amount of chemical in tissue sub-compartment
-   AMtotal = AMT + AMB # total amount of chemical in muscle
-   CM = AMtotal/VM # average/overall concentration of chemical in muscle
-   dAUCCM = CM
-   
-   ##########################################################################
-   ## OTC in fat compartment, permeability-limited model
-   RFT - PAF * CVF - (PAF * CFT)/PF # Rate of change in the amount of chemical in tissue sub-compartment
-   dAFT = RFT # Amount of chemical in tissue sub-compartment
-   
-   RFB - QF * (CA - CVF) - PAF * CVF + (PAF * CFT)/PF # Rate of change in the amount of chemical in blood sub-compartment
-   dAFB = RFT # amount of chemical in blood sub-compartment
-   AFtotal = AFT + AFB # total amount of chemical in fat
-   CF - AFtotal/CF  # average/overall cncentration of chemical in fat
-   
-   ########################################################################
-   ## OTC in richly perfused tissue compartment
-   RR = QR * (CA - CVR) # Rate of change in the amount of chemical in richly perfused tissues
-   dAR = RR * # Amount of chemical in richly perfused tissues
-     CR = AR/VR # Concentration in richly perfused tissues
-   
-   ########################################################################
-   ##  OTC in slowly perfused tissue compartment, permeability-limited nodel
-   RSB = QS * (CA - CVS) - PAS * CVS + (PAS * CST)/PS # Rate of change in the amount of chemical in blood sub-compartment
-   dASB = RSB # amount of chemical in blood sub-compartment
-   RSLT = PAS * CVS - (PAS * CST)/PS # Rate of change in the amount of chemical in tissue sub-compartment
-   dASLT = RSLT # amount of chemical in tissue sub-compartment
-   AStotal -ASLT+ ASB # total amount of chemical in slowly perfused tissues
-   CS = AStotal/VS # average/overall concentration of chemical in slowly perfused tissues
-   
-   #########################################################################
-   ## Mass balance
-   Qbal - QC - QL - QK - Qm - QF - QR - QS
-   Tmass - AA + AL + AK + Aurine + AMtotal + AFtotal + AR + Astotal
-   list(c(dAbsorb, dAmtsite, dDOSEimremain, dAIV, dADOSEoral, dAST,
-          DAI, dAcolon, dAAO, DAA, dAL, dAK, dAUrine, dAMB,
-          dAMT, dAUCCV, dAUCCL, dAUCCK, dAUCCM, dAUCCM, dAFB, dAFT,
-          dAR, dASB, dASLT))
-       })
+    #########################################################################
+    ## Concentration of the chemical in the vein of each compartment
+    CVL = AL/(VL * PL) # Concentration in the liver venous blood
+    CVK = AK/(VK * PK) # Concentration in the kidney venous blood
+    CVR = AR/(VR * PR) # Concentration in the venous blood of richly perfused compartment
+    CVF = AFB/VFB      # Concentration in the venous blood of fat
+    CVS = ASB/VSB      # Concentration in the venous blood of slowly perfused compartment
+    CVM = AMB/VMB      # Concentration in the venous blood of muscle
+    
+    ## Concentration of the chemical in the tissue sub-compartment of each member-limited compartment
+    CMT = AMT/VMT  # Muscle
+    CFT = AFT/VFT  # Fat
+    CST = ASLT/VST # Slowly perfused tissues
+    
+    # OTC iv injection to the venous
+    RIV = IVR * (Time < Timeiv)
+    dAIV = RIV
+    
+    # OTC oral gavage to the stomach
+    RDOSEoral <- OralR * (Time <= tdose * tinterval) * (Time %% tinterval < tlen) # Oral exposure rate (mg/h)
+    dADOSEoral = RDOSEoral  # Amount that orally administered (mg)
+    RAST = RDOSEoral - Kst * AST # Rate of change in the amiunt of chemical in the stomach (mg/h)
+    dAST = RAST # Amount in the stomach (mg)
+    
+    ## OTC injection in intestine and colon
+    RAI = Kst * AST - Kint * AI - Ka * AI # Rate of change in the amount of chemical in the intestine (mg/h)
+    dAI = RAI # Amount in the intestine (mg)
+    RColon = Kint * AI  # rate of change in the amount of chemical in the colon (mg/h)
+    dAColon = RColon # Amount in the colon (mg)
+    RAO = Ka * AI # Oral absorption rate (mg/h)
+    dAAO = RAO # Amount absorbed orally (mg)
+    
+    # OTC in injection to the muscle
+    RDOSEimremain = -Kdiss * DOSEimremain
+    dDOSEimremain = RDOSEimremain
+    Rim = Kim * Amtsite # im absorption rate (mg/h)
+    dAbsorb = Rim # Amount absorbed after im injection (mg)
+    Rsite = Rim + Kdiss * DOSEimremain # Rate of change in the amount of absorbable OTC in the injection site (mg/h)
+    dAmtsite = Rsite # Amount of absorbable OTC that remains in the injection site (mg)
+    
+    #####################################################################################
+    ## OTC in blood compartment
+    CV = ((QL * CVL + QK * CVK + QF * CVF + QM * CVM + QR * CVR + QS * CVS + RIV + Rim)/QC) # Concentration in the vein
+    CA = AA/Vblood # Concentration in the artery
+    RA = QC * (CV - CA) # Rate of change in the amount of chemical in the blood compartment
+    dAA = RA
+    dAUCCV = CV
+    
+    ######################################################################################
+    ## OTC in liver compartment
+    RL = QL * (CA - CVL) + RAO # Rate of change in the amount of chemical in liver
+    dAL = RL # Amount of chemical in liver
+    CL = AL/VL
+    dAUCCL = CL
+    
+    ################################################################################
+    #OTC in kidney compartment
+    # Urinary excretion of OTC
+    Rurine = Kurine * CVK
+    dAurine = Rurine
+    
+    # Kidney
+    RK = QK * (CA - CVK) - Rurine # Rate of change in the amount of chemical in kidney
+    dAK = RK # Amount of chemical in kidney
+    CK = AK/VK # Concentration in kidney
+    dAUCCK = CK
+    
+    #################################################################################
+    ## OTC in muscle compartment, permeability-likited model
+    RMB = QM * (CA - CVM) - PAM * CVM + (PAM * CMT)/PM # Rate of change in the amount of chemical in blood sub-compartment
+    dAMB = RMB # amount of chemical in blood sub-compartment
+    RMT = PAM * CVM - (PAM * CMT)/PM # Rate of change in the amount of chemical in tissue sub-compartment
+    dAMT = RMT # amount of chemical in tissue sub-compartment
+    AMtotal = AMT + AMB # total amount of chemical in muscle
+    CM = AMtotal/VM # average/overall concentration of chemical in muscle
+    dAUCCM = CM
+    
+    ##########################################################################
+    ## OTC in fat compartment, permeability-limited model
+    RFT = PAF * CVF - (PAF * CFT)/PF # Rate of change in the amount of chemical in tissue sub-compartment
+    dAFT = RFT # Amount of chemical in tissue sub-compartment
+    
+    RFB = QF * (CA - CVF) - PAF * CVF + (PAF * CFT)/PF # Rate of change in the amount of chemical in blood sub-compartment
+    dAFB = RFB # amount of chemical in blood sub-compartment
+    AFtotal = AFT + AFB # total amount of chemical in fat
+    CF = AFtotal/VF  # average/overall cncentration of chemical in fat
+    
+    ########################################################################
+    ## OTC in richly perfused tissue compartment
+    RR = QR * (CA - CVR) # Rate of change in the amount of chemical in richly perfused tissues
+    dAR = RR  # Amount of chemical in richly perfused tissues
+    CR = AR/VR # Concentration in richly perfused tissues
+    
+    ########################################################################
+    ##  OTC in slowly perfused tissue compartment, permeability-limited nodel
+    RSB = QS * (CA - CVS) - PAS * CVS + (PAS * CST)/PS # Rate of change in the amount of chemical in blood sub-compartment
+    dASB = RSB # amount of chemical in blood sub-compartment
+    RSLT = PAS * CVS - (PAS * CST)/PS # Rate of change in the amount of chemical in tissue sub-compartment
+    dASLT = RSLT # amount of chemical in tissue sub-compartment
+    AStotal = ASLT+ ASB # total amount of chemical in slowly perfused tissues
+    CS = AStotal/VS # average/overall concentration of chemical in slowly perfused tissues
+    
+    #########################################################################
+    ## Mass balance
+    Qbal = QC - QL - QK - QM - QF - QR - QS
+    Tmass = AA + AL + AK + Aurine + AMtotal + AFtotal + AR + AStotal
+    list(c(dAbsorb, dAmtsite, dDOSEimremain, dAIV, dADOSEoral, dAST,
+           dAI, dAColon, dAAO, dAA, dAL, dAK, dAurine, dAMB,
+           dAMT, dAUCCV, dAUCCL, dAUCCK, dAUCCM, dAFB, dAFT,
+           dAR, dASB, dASLT))
+  })
 }
 
-State <- c(Absorb -0, Amsite - DOSEimfast, DOSEimremain - DOSEimslow, AIV - 0, ADOSEoral - 0, AST,
-           AI - 0, Acolon - 0, AAO - 0, AA - 0, AL - 0, AK - 0, Aurine - 0, AMB - 0,
-           AMT - 0, AUCCV - 0, AUCCL - 0, AUCCK - 0, AUCCM - 0, AFB - 0, AFT - 0,
+State <- c(Absorb = 0, Amtsite = DOSEimfast, DOSEimremain = DOSEimslow, AIV = 0, ADOSEoral = 0, AST = 0,
+           AI = 0, AColon = 0, AAO = 0, AA = 0, AL = 0, AK = 0, Aurine = 0, AMB = 0,
+           AMT = 0, AUCCV = 0, AUCCL = 0, AUCCK = 0, AUCCM = 0, AFB = 0, AFT = 0,
            AR = 0, ASB = 0, ASLT = 0)
-Parameters <- c(Kst, Ka, Kint, Kim, Kdiss, QC, QL, QK, QM, QR, QS, PAF, PAM, PAS)
+Parameters <- c(Kst, Ka, Kint, Kim, Kdiss, QC, QL, QK, QM,QF, QR, QS, PAF, PAM, PAS)
 
 #Time parameters
-startime <- 0
+starttime <- 0
 stoptime <- 12
 dtout <- 0.1
-Times <- seq(startime, stoptime, dtout)
+Times <- seq(starttime, stoptime, dtout)
 
 # PBPK OUTPUT
-OUT <- Ode(y - State,
+OUT <- ode(y = State,
            times = Times,
-           func - pbpkmodel,
+           func = pbpkmodel,
            parms = Parameters,
-           method - 'lsoda')
-pbpkout <- as.data.frame(out)
+           method = 'lsoda')
+pbpkout <- as.data.frame(OUT)
 
 # Check mass balance
-Tmass = pbpkout$AA + pbpkout$Al + pbpkout$AK + pbpkout$Aurine + pbpk$AMT + pbpkout$AMB +
+Tmass = pbpkout$AA + pbpkout$Al + pbpkout$AK + pbpkout$Aurine + pbpkout$AMT + pbpkout$AMB +
   pbpkout$AFT + pbpkout$AFB + pbpkout$AR + pbpkout$ASLT + pbpkout$ASB 
-Bal = pbpkout$AAo + pbpkout$AIV + pbpkout$Absorb - Tmass
+Bal = pbpkout$AAO + pbpkout$AIV + pbpkout$Absorb - Tmass
 plot(Times, Bal, col="red")
+
 
 
 Additonal plot
@@ -270,5 +285,3 @@ TimeOff= Dstop*24+tlen   # Termination time point of oral gavage (h)
 Exposure1 = SQUAREPULSE(0,tlen)
 Exposure2 = SQUAREPULSE(0,tlen) + SQUAREPULSE(0+tinterval,tlen)
 Exposure5 = SQUAREPULSE(0,tlen) + SQUAREPULSE(0+tinterval,tlen) + SQUAREPULSE(0+2*tinterval,tlen) + SQUAREPULSE(0+3*tinterval,tlen) + SQUAREPULSE(0+4*tinterval,tlen)
-
-
