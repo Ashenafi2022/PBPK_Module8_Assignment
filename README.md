@@ -6,6 +6,11 @@
 # author: "Ashenafi Beyi"
 # date: "3/20/2021"
 ---
+ ---
+# title: "Module8_Assignment"
+# author: "Ashenafi Beyi"
+# date: "3/20/2021"
+---
   install.packages("deSolve")
   
   library(deSolve)
@@ -259,29 +264,81 @@ OUT <- ode(y = State,
 pbpkout <- as.data.frame(OUT)
 
 # Check mass balance
-Tmass = pbpkout$AA + pbpkout$Al + pbpkout$AK + pbpkout$Aurine + pbpkout$AMT + pbpkout$AMB +
+Tmass = pbpkout$AA + pbpkout$AL + pbpkout$AK + pbpkout$Aurine + pbpkout$AMT + pbpkout$AMB +
   pbpkout$AFT + pbpkout$AFB + pbpkout$AR + pbpkout$ASLT + pbpkout$ASB 
-Bal = pbpkout$AAO + pbpkout$AIV + pbpkout$Absorb - Tmass
+Bal = pbpkout$AAO  + pbpkout$AIV  + pbpkout$Absorb  - Tmass
 plot(Times, Bal, col="red")
 
+## Plot the concentration-time curves in all compartments
+# OTC in blood compartment
+CVL = pbpkout$AL/(VL * PL)    # Concentration in the liver blood
+CVK = pbpkout$AK/(VK * PK)    # Concentration in the kidney blood
+CVF = pbpkout$AFB/VFB  # Concentration in the fat venous blood
+CVR = pbpkout$AR/(VR * PR)    # Concentration in the venous blood richly perfused tissues
+CVS = pbpkout$ASB/VSB          # Concentration in the venous blood slowly perfused tissues
+CVM = pbpkout$AMB/VMB         # Concentartion of the muscle venous blood
+CMT = pbpkout$AMT/VMT         # Concentration in the tissue sub-compartment of the muscle
+CFT = pbpkout$AFT/VFT         # Concetration in the tissue sub-compartment of fat
+CST = pbpkout$ASLT/VST        # Concentration in the tissue sub-compartment of fat
+RIV = IVR * (Times < Timeiv)  
+Rim = Kim * pbpkout$Amtsite
+
+CV = ((QL * CVL + QK * CVK + QM * CVM + QF * CVF + QR * CVR + QS * CVS + RIV + Rim)/QC)
+plot(Times, CV, type = 'l', xlab = c('Time (hours)', title= "25 mg/kg 5 gavage" , col=1))
+
+# OTC in artery compartment
+CA = pbpkout$AA/Vblood
+plot(Times, CA, type='l', xlab =c('Time (hours)', col=2))
+
+# OTC in liver compartment
+CL = pbpkout$AL/VL
+plot(Times, CL, type='l', xlab =c('Time (hours)', col=3))
+
+# OTC in kidney compartment
+CK = pbpkout$AK/VK
+plot(Times, CK, type='l', xlab =c('Time (hours)', col=4))
+
+# OTC in muscle compartment
+AMtotal = pbpkout$AMT + pbpkout$AMB
+CM = AMtotal/VM
+plot(Times, CM, type='l', xlab =c('Time (hours)', col=5))
+
+# OTC in fat compartment
+AFtotal = pbpkout$AFT + pbpkout$AFB
+CF = AFtotal/VF
+plot(Times, CF, type='l', xlab =c('Time (hours)', col=6))
+
+# OTC in richly perfused tissue compartment
+CR = pbpkout$AR/VR
+plot(Times, CR, type='l', xlab =c('Time (hours)', col=7))
+
+# OTC in slowly perfused tissue compartment
+AStotal = pbpkout$ASLT + pbpkout$ASB
+CS = AStotal/VS
+plot(Times, CS, type='l', xlab =c('Time (hours)', col=8))
 
 
-Additonal plot
 
+# ora dose = 25  5 times
+# PDOSEoral.25 = 25 # (mg/kg)
+# tdose.5 = 5 # Number of oral gavage
 
+# Dose 100 mg/kg
+OTC_oral_100 <- read.csv("C:/Data analysis/PBPK modeling/OTC-Oral-Blood-100.csv", 
+                           header = TRUE)
+dim(OTC_oral_100)
 
-Dstart= 0.0    # Initiation day of oral gavage (day)
-Dstop= 0.2     # Termination day of oral gavage (day)
-MAXT = 1.0     # maximum comm. interval
-CINTC = 0.1    # Communication interval
-CINT = CINTC   # Communication interval
-Tsim= STOPTIME #  Tstopin hours
-DS = Dstart*24 # Initiation time point of oral gavage (h)
-Doff = (Dstop-Dstart)*24 # Oral gavage duration (h)
-TimeOn= Dstart*24        # Initiation time point of oral gavage (h)
-TimeOff= Dstop*24+tlen   # Termination time point of oral gavage (h)
+plot(Times, CV, type = 'l', xlab = c('Time (hours)', title= "100 mg/kg gavage" , col=1))
+par(new=TRUE)
+plot(OTC_oral_100$time, OTC_oral_100$CV, xlab = " ", ylab = " ", type = 'l', col=9)
 
-# Exposure = PULSE(0,tinterval,tlen)*PULSE(DS, Tsim, Doff)
-Exposure1 = SQUAREPULSE(0,tlen)
-Exposure2 = SQUAREPULSE(0,tlen) + SQUAREPULSE(0+tinterval,tlen)
-Exposure5 = SQUAREPULSE(0,tlen) + SQUAREPULSE(0+tinterval,tlen) + SQUAREPULSE(0+2*tinterval,tlen) + SQUAREPULSE(0+3*tinterval,tlen) + SQUAREPULSE(0+4*tinterval,tlen)
+# Dose 25 mg/kg
+
+OTC_oral_25 <- read.csv("C:/Data analysis/PBPK modeling/OTC-Oral-Blood-25.csv", 
+                         header = TRUE)
+dim(OTC_oral_125)
+
+plot(Times, CV, type = 'l', xlab = c('Time (hours)', title= "25 mg/kg 5 gavage" , col=1))
+par(new=TRUE)
+plot(OTC_oral_25$time, OTC_oral_25$CV, xlab = " ", ylab = " ", type = 'l', col=9) 
+
